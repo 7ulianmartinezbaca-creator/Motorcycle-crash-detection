@@ -53,3 +53,11 @@ Thumbs.db
 *.su
 *.idb
 *.pdb
+
+credentials.h
+credential.h
+credentails.h
+target/
+.DS_Store
+nul
+Nul
