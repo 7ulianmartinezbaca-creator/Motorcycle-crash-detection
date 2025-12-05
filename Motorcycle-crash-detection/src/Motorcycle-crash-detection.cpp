@@ -111,26 +111,26 @@ void setup() {
 // loop() runs over and over again, as quickly as it can execute.
 void loop() {
 
-  // MQTT_connect();
-  // MQTT_ping();
-
-  //Serial.printf("Inches: %0.2lf\nFeet: %0.2f\n",inches,ft);
-
-  if ((millis()- lastAccel)>10) {
-    getShock();
-  }
-
-  if (printData) {
-    Serial.printf("sh: %0.4lf\n",greatestPick);
-  }
-
-  getGPS(&lat,&lon,&alt,&sat,&spe);
   GPS.read();
   if (GPS.newNMEAreceived()) {
     if (!GPS.parse(GPS.lastNMEA())) {
       return;
     }   
   }
+
+  //arrCounter = 0;
+
+  // MQTT_connect();
+  // MQTT_ping();
+
+  //Serial.printf("Inches: %0.2lf\nFeet: %0.2f\n",inches,ft);
+
+  if (printData) {
+    Serial.printf("sh: %0.4lf\n",greatestPick);
+  }
+
+  getGPS(&lat,&lon,&alt,&sat,&spe);
+
 
   inches = rangefinder.getDistanceInch();
   ft = inches / 12.0;
@@ -143,6 +143,7 @@ void loop() {
   //   }
   // } 
   
+  //getGPS(&lat,&lon,&alt,&sat,&spe);
   // if((millis()-lastTime > 10000000)) {
   //   if(mqtt.Update()) {
   //     pubFeed.publish();
@@ -232,7 +233,7 @@ bool MQTT_ping() {
 }
 
 void getShock() {
-  printData = !printData;
+  printData = FALSE;
   while (arrCounter < 500) {
     arrCounter = 0;
     // point to acceleromitor registor
@@ -268,9 +269,9 @@ void getShock() {
     lastAccel = millis();
   }
   for (int i = 0; i < 500 ; i++){
-      if (greatestPick > shockArray[i]) {
-        greatestPick = shockArray[i];
-      }
-      printData = TRUE;
+    if (greatestPick < shockArray[i]) {
+      greatestPick = shockArray[i];
+    }
   }
+  printData = TRUE;
 }
