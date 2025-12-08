@@ -11,6 +11,7 @@
 #include "HC_SR04.h"
 #include "neopixel.h"
 #include "IoTclassroom_CNM.h"
+#include "IoTTimer.h"
 #include "Colors.h"
 #include <Adafruit_GPS.h>
 #include "Adafruit_SSD1306.h"
@@ -49,7 +50,10 @@ unsigned int lastAccel;
 unsigned int lastGPS;
 unsigned int lastTime;
 const unsigned int UPDATE = 30000;
-bool printData;
+
+IoTTimer shockTimer;
+IoTTimer speedTimer;
+IoTTimer distanceTimer;
 
 Adafruit_SSD1306 display(OLED_RESET);
 Adafruit_NeoPixel pixel(pixcount, SPI1, WS2812B);
@@ -57,9 +61,10 @@ HC_SR04 rangefinder = HC_SR04(trigpin, echopin);
 TCPClient TheClient;
 Adafruit_MQTT_SPARK mqtt(&TheClient,AIO_SERVER,AIO_SEVERPORT,AIO_USERNAME,AIO_KEY);
 Adafruit_MQTT_Subscribe subFeed = Adafruit_MQTT_Subscribe(&mqtt, AIO_USERNAME "/feeds/"); 
-Adafruit_MQTT_Publish pubFeed = Adafruit_MQTT_Publish(&mqtt, AIO_USERNAME "/feeds/");
-
-SYSTEM_THREAD(ENABLED);
+Adafruit_MQTT_Publish pubSpeed = Adafruit_MQTT_Publish(&mqtt, AIO_USERNAME "/feeds/speed");
+Adafruit_MQTT_Publish pubDistance = Adafruit_MQTT_Publish(&mqtt, AIO_USERNAME "/feeds/distance-sensor");
+Adafruit_MQTT_Publish pubGps = Adafruit_MQTT_Publish(&mqtt, AIO_USERNAME "/feeds/gps");
+Adafruit_MQTT_Publish pubShock = Adafruit_MQTT_Publish(&mqtt, AIO_USERNAME "/feeds/shock-sensor");
 
 void MQTT_connect();
 bool MQTT_ping();
@@ -67,13 +72,11 @@ void getShock();
 void pixelFill(int startP, int endP, int color);
 void getGPS(float *latitude, float *longitude, float *altitude, int *satellites, float *speed);
 
-SYSTEM_MODE(SEMI_AUTOMATIC);
+SYSTEM_MODE(AUTOMATIC);
 
 void setup() {
   Serial.begin(9600);
   waitFor(Serial.isConnected,10000);
-
-  new Thread("shockThread",getShock);
 
   pixel.begin();
   pixel.setBrightness(75);
@@ -84,12 +87,12 @@ void setup() {
   display.clearDisplay();
   display.display();
 
-  // WiFi.on();
-  // WiFi.connect();
-  // while(WiFi.connecting()) {
-  //   Serial.printf(".");
-  // }
-  // mqtt.subscribe(&subFeed);
+  WiFi.on();
+  WiFi.connect();
+  while(WiFi.connecting()) {
+    Serial.printf(".");
+  }
+  mqtt.subscribe(&subFeed);
 
   Wire.begin();
   Wire.beginTransmission(MPUADDRESS);
@@ -105,11 +108,13 @@ void setup() {
   delay(1000);
   GPS.println(PMTK_Q_RELEASE);
 
-  printData = false;
 }
 
 // loop() runs over and over again, as quickly as it can execute.
 void loop() {
+
+  MQTT_connect();
+  MQTT_ping();
 
   GPS.read();
   if (GPS.newNMEAreceived()) {
@@ -117,40 +122,52 @@ void loop() {
       return;
     }   
   }
+ Serial.printf("before first shock\n");
+  getShock();
+Serial.printf("after first shock\n");
 
-  //arrCounter = 0;
+  shockTimer.startTimer(200);
 
-  // MQTT_connect();
-  // MQTT_ping();
-
-  //Serial.printf("Inches: %0.2lf\nFeet: %0.2f\n",inches,ft);
-
-  if (printData) {
-    Serial.printf("sh: %0.4lf\n",greatestPick);
+  if((millis()-lastTime > 100)) {
+    getGPS(&lat,&lon,&alt,&sat,&spe);
+    if(mqtt.Update()) {
+      pubGps.publish(lat,lon);
+      Serial.printf("published\n");
+    } 
+    lastTime = millis();
   }
 
-  getGPS(&lat,&lon,&alt,&sat,&spe);
+  speedTimer.startTimer(300);
 
+  if (shockTimer.isTimerReady()) {
+    if(mqtt.Update()) {
+      pubShock.publish(greatestPick);
+      Serial.printf("published\n");
+    } 
+    shockTimer.startTimer(200);
+  }
 
-  inches = rangefinder.getDistanceInch();
-  ft = inches / 12.0;
-  spee = spe * 1.15078;
-  
-  // Adafruit_MQTT_Subscribe *subscription;
-  // while ((subscription = mqtt.readSubscription(100))) {
-  //   if (subscription == &subFeed) {
-  //     i  = atoi((char *)subFeed.lastread);
-  //   }
-  // } 
-  
-  //getGPS(&lat,&lon,&alt,&sat,&spe);
-  // if((millis()-lastTime > 10000000)) {
-  //   if(mqtt.Update()) {
-  //     pubFeed.publish();
-  //   } 
-  //   lastTime = millis();
-  // }
+  distanceTimer.startTimer(250);
 
+  if (speedTimer.isTimerReady()) {
+    getGPS(&lat,&lon,&alt,&sat,&spe);
+    spee = spe * 1.15078;
+    if(mqtt.Update()) {
+      pubSpeed.publish(spee);
+      Serial.printf("published\n");
+    } 
+    speedTimer.startTimer(300);
+  }
+
+  if (distanceTimer.isTimerReady()) {
+    if(mqtt.Update()) {
+      inches = rangefinder.getDistanceInch();
+      ft = inches / 12.0;
+      pubDistance.publish(ft);
+      Serial.printf("published\n");
+    } 
+    distanceTimer.startTimer(250);
+  }
   // display.clearDisplay();
   // display.setTextSize(1);
   // display.setTextColor(WHITE);
@@ -233,7 +250,6 @@ bool MQTT_ping() {
 }
 
 void getShock() {
-  printData = FALSE;
   while (arrCounter < 500) {
     arrCounter = 0;
     // point to acceleromitor registor
@@ -273,5 +289,4 @@ void getShock() {
       greatestPick = shockArray[i];
     }
   }
-  printData = TRUE;
 }
