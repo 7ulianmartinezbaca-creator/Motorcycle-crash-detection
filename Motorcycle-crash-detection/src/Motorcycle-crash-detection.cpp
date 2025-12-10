@@ -21,6 +21,15 @@
 #include "Adafruit_MQTT/Adafruit_MQTT_SPARK.h"
 #include "Adafruit_MQTT/Adafruit_MQTT.h"
 #include "credentails.h"
+#include "JsonParserGeneratorRK.h"
+
+void createEventPayLoad(GeoLocation Location);
+void MQTT_connect();
+bool MQTT_ping();
+void getShock();
+void lights();
+void pixelFill(int startP, int endP, int color);
+void getGPS(float *latitude, float *longitude, float *altitude, int *satellites, float *speed);
 
 byte accel_x_h,accel_x_l;
 byte accel_y_h,accel_y_l;
@@ -51,6 +60,13 @@ unsigned int lastGPS;
 unsigned int lastTime,lastT;
 const unsigned int UPDATE = 30000;
 
+struct GeoLocation {
+  float lat;
+  float lon;
+};
+
+GeoLocation Loc;
+
 IoTTimer shockTimer;
 IoTTimer speedTimer;
 IoTTimer distanceTimer;
@@ -66,12 +82,7 @@ Adafruit_MQTT_Publish pubDistance = Adafruit_MQTT_Publish(&mqtt, AIO_USERNAME "/
 Adafruit_MQTT_Publish pubGps = Adafruit_MQTT_Publish(&mqtt, AIO_USERNAME "/feeds/gps");
 Adafruit_MQTT_Publish pubShock = Adafruit_MQTT_Publish(&mqtt, AIO_USERNAME "/feeds/shock-sensor");
 
-void MQTT_connect();
-bool MQTT_ping();
-void getShock();
-void lights();
-void pixelFill(int startP, int endP, int color);
-void getGPS(float *latitude, float *longitude, float *altitude, int *satellites, float *speed);
+
 
 SYSTEM_MODE(AUTOMATIC);
 
@@ -147,20 +158,6 @@ void loop() {
     pixel.show();
   }
 
-  if((millis()-lastTime > 900)) {
-    getGPS(&lat,&lon,&alt,&sat,&spe);
-    if(mqtt.Update()) {
-      pubGps.publish(lat,lon);
-    } 
-    lastTime = millis();
-  }
-
-  if (shockTimer.isTimerReady()) {
-    if(mqtt.Update()) {
-      pubShock.publish(greatestPick);
-    } 
-    shockTimer.startTimer(700);
-  }
 
   if (speedTimer.isTimerReady()) {
     getGPS(&lat,&lon,&alt,&sat,&spe);
@@ -177,7 +174,7 @@ void loop() {
       ft = inches / 12.0;
       pubDistance.publish(ft);
     } 
-    distanceTimer.startTimer(800);
+    distanceTimer.startTimer(2000);
   }
 
   // display.clearDisplay();
@@ -189,6 +186,17 @@ void loop() {
   // display.setTextColor(BLACK, WHITE); // 'inverted' text
   // display.display();
 
+}
+
+void createEventPayLoad(GeoLocation randLoc){
+  JsonWriterStatic<256> jw;
+  {
+    JsonWriterAutoObject obj(&jw);
+
+    jw.insertKeyValue("lat",randLoc.lat);
+    jw.insertKeyValue("lon",randLoc.lon);
+  }
+  pubGps.publish(jw.getBuffer());
 }
 
 void pixelFill(int startP, int endP, int color){
@@ -298,7 +306,11 @@ void getShock() {
       greatestPick = shockArray[i];
     }
   }
-  shockTimer.startTimer(450);
+  if (greatestPick < 1.9) {
+    if(mqtt.Update()) {
+      pubShock.publish(greatestPick);
+    } 
+  }
 }
 
 void lights(){
