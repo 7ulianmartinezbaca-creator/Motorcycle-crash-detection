@@ -34,7 +34,7 @@ Adafruit_GPS GPS(&Wire);
 
 float shockArray[500];
 float xAxis_Gs,yAxis_Gs,zAxis_Gs;
-float lat, lon, alt,spe,spee;
+float lat, lon, alt,spe,mph;
 float Atot,greatestPick;
 float lastPick = 0.0;
 double inches = 0.0,ft;
@@ -48,7 +48,7 @@ const int OLED_RESET=-1;
 const int MPUADDRESS = 0x68;
 unsigned int lastAccel;
 unsigned int lastGPS;
-unsigned int lastTime;
+unsigned int lastTime,lastT;
 const unsigned int UPDATE = 30000;
 
 IoTTimer shockTimer;
@@ -69,6 +69,7 @@ Adafruit_MQTT_Publish pubShock = Adafruit_MQTT_Publish(&mqtt, AIO_USERNAME "/fee
 void MQTT_connect();
 bool MQTT_ping();
 void getShock();
+void lights();
 void pixelFill(int startP, int endP, int color);
 void getGPS(float *latitude, float *longitude, float *altitude, int *satellites, float *speed);
 
@@ -108,6 +109,9 @@ void setup() {
   delay(1000);
   GPS.println(PMTK_Q_RELEASE);
 
+  speedTimer.startTimer(300);
+  distanceTimer.startTimer(250);
+
 }
 
 // loop() runs over and over again, as quickly as it can execute.
@@ -122,41 +126,49 @@ void loop() {
       return;
     }   
   }
- Serial.printf("before first shock\n");
+
+  inches = rangefinder.getDistanceInch();
+  ft = inches / 12.0;
   getShock();
-Serial.printf("after first shock\n");
 
-  shockTimer.startTimer(200);
+  if (ft > 13) {
+    pixelFill(0,36,lime);
+  }
 
-  if((millis()-lastTime > 100)) {
+  if (ft < 13) {
+    if (millis() - lastT > 200) {
+      lights();
+      lastT = millis();
+    }
+  }
+
+  if (mph > 5) {
+    pixel.clear();
+    pixel.show();
+  }
+
+  if((millis()-lastTime > 900)) {
     getGPS(&lat,&lon,&alt,&sat,&spe);
     if(mqtt.Update()) {
       pubGps.publish(lat,lon);
-      Serial.printf("published\n");
     } 
     lastTime = millis();
   }
 
-  speedTimer.startTimer(300);
-
   if (shockTimer.isTimerReady()) {
     if(mqtt.Update()) {
       pubShock.publish(greatestPick);
-      Serial.printf("published\n");
     } 
-    shockTimer.startTimer(200);
+    shockTimer.startTimer(700);
   }
-
-  distanceTimer.startTimer(250);
 
   if (speedTimer.isTimerReady()) {
     getGPS(&lat,&lon,&alt,&sat,&spe);
-    spee = spe * 1.15078;
+    mph = spe * 1.15078;
     if(mqtt.Update()) {
-      pubSpeed.publish(spee);
-      Serial.printf("published\n");
+      pubSpeed.publish(mph);
     } 
-    speedTimer.startTimer(300);
+    speedTimer.startTimer(600);
   }
 
   if (distanceTimer.isTimerReady()) {
@@ -164,20 +176,18 @@ Serial.printf("after first shock\n");
       inches = rangefinder.getDistanceInch();
       ft = inches / 12.0;
       pubDistance.publish(ft);
-      Serial.printf("published\n");
     } 
-    distanceTimer.startTimer(250);
+    distanceTimer.startTimer(800);
   }
+
   // display.clearDisplay();
   // display.setTextSize(1);
   // display.setTextColor(WHITE);
   // display.setCursor(0,0);
   // //display.printf("Lat: %0.6f, Lon: %0.6f, Alt: %0.6f\n, Satellites: %i, speed in knots %f\n",lat, lon, alt, sat, spee);
-  // //display.printf("Shock data: %f\n",);
+  // display.printf("ft:%0.2f\n",ft);
   // display.setTextColor(BLACK, WHITE); // 'inverted' text
   // display.display();
-
-  pixelFill(0,46,green);
 
 }
 
@@ -250,8 +260,8 @@ bool MQTT_ping() {
 }
 
 void getShock() {
+  arrCounter = 0;
   while (arrCounter < 500) {
-    arrCounter = 0;
     // point to acceleromitor registor
     Wire.beginTransmission(MPUADDRESS);
     Wire.write(0x3B);
@@ -282,11 +292,24 @@ void getShock() {
       // Store total accelration in array
     shockArray[arrCounter] = Atot;
     arrCounter++;
-    lastAccel = millis();
   }
   for (int i = 0; i < 500 ; i++){
     if (greatestPick < shockArray[i]) {
       greatestPick = shockArray[i];
     }
+  }
+  shockTimer.startTimer(450);
+}
+
+void lights(){
+  static bool light;
+
+  light = !light;
+  if (light) {
+    pixelFill(0,15,red);
+  }
+  else {
+    pixel.clear();
+    pixel.show();
   }
 }
