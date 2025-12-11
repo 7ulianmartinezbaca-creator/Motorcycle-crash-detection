@@ -59,8 +59,7 @@ Your Adafruit IO dashboard can track:
 - Distance (cm)  
 - Shock/impact data  
 - GPS map  
-- Safe/unsafe state  
 - Event timestamps  
 
 ## License  
-MIT License (or another license of your choice)
+MIT License 
