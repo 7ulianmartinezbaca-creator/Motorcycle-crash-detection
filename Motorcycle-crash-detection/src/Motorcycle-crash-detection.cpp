@@ -27,6 +27,7 @@ struct GeoLocation {
   float lat;
   float lon;
   float speed;
+  int sats;
 };
 
 void createEventPayLoad(GeoLocation Location);
@@ -82,7 +83,7 @@ Adafruit_MQTT_Publish pubSpeed = Adafruit_MQTT_Publish(&mqtt, AIO_USERNAME "/fee
 Adafruit_MQTT_Publish pubDistance = Adafruit_MQTT_Publish(&mqtt, AIO_USERNAME "/feeds/distance-sensor");
 Adafruit_MQTT_Publish pubGps = Adafruit_MQTT_Publish(&mqtt, AIO_USERNAME "/feeds/gps");
 Adafruit_MQTT_Publish pubShock = Adafruit_MQTT_Publish(&mqtt, AIO_USERNAME "/feeds/shock-sensor");
-
+Adafruit_MQTT_Publish pubSat = Adafruit_MQTT_Publish(&mqtt, AIO_USERNAME "/feeds/satelittes");
 
 
 SYSTEM_MODE(AUTOMATIC);
@@ -144,7 +145,6 @@ void loop() {
   delay(100);
   ft = inches / 12.0;
 
-  greatestPick = 0; 
   getShock();
 
   if (mph < 5) {
@@ -176,22 +176,22 @@ void loop() {
     distanceTimer.startTimer(2500);
   }
 
-  if (gpsTimer.isTimerReady()) { 
-    createEventPayLoad(Loc);
-    gpsTimer.startTimer(60000);
-    }
+  // if (gpsTimer.isTimerReady()) { 
+  //   getGPS(Loc);
+  //   //createEventPayLoad(Loc);
+  //   pubSat.publish(Loc.sats);
+  //   gpsTimer.startTimer(60000);
+  //   }
 
   if (speedTimer.isTimerReady()) {
     mph = Loc.speed * 1.15078;
     if (mph > 5 ) {
       if(mqtt.Update()) {
         pubSpeed.publish(mph);
-        Serial.printf("MPH: %f \n",mph);
       } 
     }
     speedTimer.startTimer(1000);
   }
-  Serial.printf("MPH: %f \n",mph);
 
   // display.clearDisplay();
   // display.setTextSize(1);
@@ -239,6 +239,8 @@ void getGPS(GeoLocation bikeData){
       bikeData.lat = GPS.latitudeDegrees;
       bikeData.lon = GPS.longitudeDegrees; 
       bikeData.speed = GPS.speed;
+      bikeData.sats = GPS.satellites;
+      pubSat.publish(Loc.sats);
       // Serial.printf("Lat: %0.6f, Lon: %0.6f, Alt: %0.6f\n",*latitude, *longitude, *altitude);
       // Serial.printf("Speed (m/s): %0.2f\n",GPS.speed/1.944);
       // Serial.printf("Angle: %0.2f\n",GPS.angle);
@@ -282,6 +284,7 @@ bool MQTT_ping() {
 }
 
 void getShock() {
+  greatestPick = 0; 
   arrCounter = 0;
   while (arrCounter < 500) {
     // point to acceleromitor registor
