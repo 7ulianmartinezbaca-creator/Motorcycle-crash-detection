@@ -36,7 +36,7 @@ bool MQTT_ping();
 void getShock();
 void lights();
 void pixelFill(int startP, int endP, int color);
-void getGPS(GeoLocation bikeData);
+void getGPS(float *latitude, float *longitude, int *satellites, float *speed );
 
 byte accel_x_h,accel_x_l;
 byte accel_y_h,accel_y_l;
@@ -50,7 +50,7 @@ Adafruit_GPS GPS(&Wire);
 
 float shockArray[500];
 float xAxis_Gs,yAxis_Gs,zAxis_Gs;
-float lat, lon, alt,spe,mph;
+float lat, lon, alt, spe, mph;
 float Atot,greatestPick;
 float lastPick = 0.0;
 double inches = 0.0,ft;
@@ -176,12 +176,11 @@ void loop() {
     distanceTimer.startTimer(2500);
   }
 
-  // if (gpsTimer.isTimerReady()) { 
-  //   getGPS(Loc);
-  //   //createEventPayLoad(Loc);
-  //   pubSat.publish(Loc.sats);
-  //   gpsTimer.startTimer(60000);
-  //   }
+  if (gpsTimer.isTimerReady()) { 
+    getGPS( &lat, &lon, &sat, &spe);
+    createEventPayLoad();
+    gpsTimer.startTimer(60000);
+    }
 
   if (speedTimer.isTimerReady()) {
     mph = Loc.speed * 1.15078;
@@ -224,7 +223,7 @@ void pixelFill(int startP, int endP, int color){
   pixel.clear();
 }
 
-void getGPS(GeoLocation bikeData){
+void getGPS (float *latitude, float *longitude, int *satellites, float *speed ) {
   int theHour;
 
   theHour = GPS.hour + TIMEZONE;
@@ -236,17 +235,17 @@ void getGPS(GeoLocation bikeData){
   // Serial.printf("Dates: %02i-%02i-20%02i\n", GPS.month, GPS.day, GPS.year);
   // Serial.printf("Fix: %i, Quality: %i",(int)GPS.fix,(int)GPS.fixquality);
     if (GPS.fix) {
-      bikeData.lat = GPS.latitudeDegrees;
-      bikeData.lon = GPS.longitudeDegrees; 
-      bikeData.speed = GPS.speed;
-      bikeData.sats = GPS.satellites;
-      pubSat.publish(GPS.satellites);
+    *latitude = GPS.latitudeDegrees;
+    *longitude = GPS.longitudeDegrees;
+    *satellites = (int)GPS.satellites;
+    *speed = GPS.speed;
+  }
       // Serial.printf("Lat: %0.6f, Lon: %0.6f, Alt: %0.6f\n",*latitude, *longitude, *altitude);
       // Serial.printf("Speed (m/s): %0.2f\n",GPS.speed/1.944);
       // Serial.printf("Angle: %0.2f\n",GPS.angle);
       // Serial.printf("Satellites: %i\n",*satellites);
-    }
 }
+
 
 void MQTT_connect() {
   int8_t ret;
