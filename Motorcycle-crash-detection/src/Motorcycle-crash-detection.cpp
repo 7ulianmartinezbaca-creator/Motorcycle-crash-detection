@@ -240,7 +240,7 @@ void getGPS(GeoLocation bikeData){
       bikeData.lon = GPS.longitudeDegrees; 
       bikeData.speed = GPS.speed;
       bikeData.sats = GPS.satellites;
-      pubSat.publish(Loc.sats);
+      pubSat.publish(GPS.satellites);
       // Serial.printf("Lat: %0.6f, Lon: %0.6f, Alt: %0.6f\n",*latitude, *longitude, *altitude);
       // Serial.printf("Speed (m/s): %0.2f\n",GPS.speed/1.944);
       // Serial.printf("Angle: %0.2f\n",GPS.angle);
