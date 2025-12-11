@@ -23,13 +23,19 @@
 #include "credentails.h"
 #include "JsonParserGeneratorRK.h"
 
+struct GeoLocation {
+  float lat;
+  float lon;
+  float speed;
+};
+
 void createEventPayLoad(GeoLocation Location);
 void MQTT_connect();
 bool MQTT_ping();
 void getShock();
 void lights();
 void pixelFill(int startP, int endP, int color);
-void getGPS(float *latitude, float *longitude, float *altitude, int *satellites, float *speed);
+void getGPS(GeoLocation bikeData);
 
 byte accel_x_h,accel_x_l;
 byte accel_y_h,accel_y_l;
@@ -49,10 +55,10 @@ float lastPick = 0.0;
 double inches = 0.0,ft;
 int arrCounter;
 int sat;
-const int trigpin = D17;
-const int echopin = D15;
+const int trigpin = D15;
+const int echopin = D17;
 const int TIMEZONE = -6;
-const int pixcount = 46;
+const int pixcount = 19;
 const int OLED_RESET=-1;
 const int MPUADDRESS = 0x68;
 unsigned int lastAccel;
@@ -60,14 +66,9 @@ unsigned int lastGPS;
 unsigned int lastTime,lastT;
 const unsigned int UPDATE = 30000;
 
-struct GeoLocation {
-  float lat;
-  float lon;
-};
-
 GeoLocation Loc;
 
-IoTTimer shockTimer;
+IoTTimer gpsTimer;
 IoTTimer speedTimer;
 IoTTimer distanceTimer;
 
@@ -91,7 +92,7 @@ void setup() {
   waitFor(Serial.isConnected,10000);
 
   pixel.begin();
-  pixel.setBrightness(75);
+  pixel.setBrightness(150);
   pixel.show();
 
   display.setRotation(2);
@@ -120,8 +121,9 @@ void setup() {
   delay(1000);
   GPS.println(PMTK_Q_RELEASE);
 
-  speedTimer.startTimer(300);
-  distanceTimer.startTimer(250);
+  speedTimer.startTimer(2000);
+  distanceTimer.startTimer(1500);
+  gpsTimer.startTimer(60000);
 
 }
 
@@ -139,43 +141,57 @@ void loop() {
   }
 
   inches = rangefinder.getDistanceInch();
+  delay(100);
   ft = inches / 12.0;
+
+  greatestPick = 0; 
   getShock();
 
-  if (ft > 13) {
-    pixelFill(0,36,lime);
-  }
+  if (mph < 5) {
+    if (ft > 13) {
+      pixelFill(0,19,lime);
+    }
 
-  if (ft < 13) {
-    if (millis() - lastT > 200) {
-      lights();
-      lastT = millis();
+    if (ft < 13) {
+      if (millis() - lastT > 200) {
+        lights();
+        lastT = millis();
+      }
     }
   }
 
-  if (mph > 5) {
+  else {
     pixel.clear();
     pixel.show();
   }
 
+  if (distanceTimer.isTimerReady()) {
+    inches = rangefinder.getDistanceInch();
+    ft = inches / 12.0; 
+    if ((ft > 6) && (ft < 14)) {
+      if(mqtt.Update()) {
+      pubDistance.publish(ft);
+     } 
+    }
+    distanceTimer.startTimer(2500);
+  }
+
+  if (gpsTimer.isTimerReady()) { 
+    createEventPayLoad(Loc);
+    gpsTimer.startTimer(60000);
+    }
 
   if (speedTimer.isTimerReady()) {
-    getGPS(&lat,&lon,&alt,&sat,&spe);
-    mph = spe * 1.15078;
-    if(mqtt.Update()) {
-      pubSpeed.publish(mph);
-    } 
-    speedTimer.startTimer(600);
+    mph = Loc.speed * 1.15078;
+    if (mph > 5 ) {
+      if(mqtt.Update()) {
+        pubSpeed.publish(mph);
+        Serial.printf("MPH: %f \n",mph);
+      } 
+    }
+    speedTimer.startTimer(1000);
   }
-
-  if (distanceTimer.isTimerReady()) {
-    if(mqtt.Update()) {
-      inches = rangefinder.getDistanceInch();
-      ft = inches / 12.0;
-      pubDistance.publish(ft);
-    } 
-    distanceTimer.startTimer(2000);
-  }
+  Serial.printf("MPH: %f \n",mph);
 
   // display.clearDisplay();
   // display.setTextSize(1);
@@ -208,7 +224,7 @@ void pixelFill(int startP, int endP, int color){
   pixel.clear();
 }
 
-void getGPS(float *latitude, float *longitude, float *altitude, int *satellites, float *speed){
+void getGPS(GeoLocation bikeData){
   int theHour;
 
   theHour = GPS.hour + TIMEZONE;
@@ -220,11 +236,9 @@ void getGPS(float *latitude, float *longitude, float *altitude, int *satellites,
   // Serial.printf("Dates: %02i-%02i-20%02i\n", GPS.month, GPS.day, GPS.year);
   // Serial.printf("Fix: %i, Quality: %i",(int)GPS.fix,(int)GPS.fixquality);
     if (GPS.fix) {
-      *latitude = GPS.latitudeDegrees;
-      *longitude = GPS.longitudeDegrees; 
-      *altitude = GPS.altitude;
-      *satellites = (int)GPS.satellites;
-      *speed = GPS.speed;
+      bikeData.lat = GPS.latitudeDegrees;
+      bikeData.lon = GPS.longitudeDegrees; 
+      bikeData.speed = GPS.speed;
       // Serial.printf("Lat: %0.6f, Lon: %0.6f, Alt: %0.6f\n",*latitude, *longitude, *altitude);
       // Serial.printf("Speed (m/s): %0.2f\n",GPS.speed/1.944);
       // Serial.printf("Angle: %0.2f\n",GPS.angle);
@@ -306,7 +320,7 @@ void getShock() {
       greatestPick = shockArray[i];
     }
   }
-  if (greatestPick < 1.9) {
+  if (greatestPick > 1.9) {
     if(mqtt.Update()) {
       pubShock.publish(greatestPick);
     } 
@@ -318,7 +332,7 @@ void lights(){
 
   light = !light;
   if (light) {
-    pixelFill(0,15,red);
+    pixelFill(0,19,red);
   }
   else {
     pixel.clear();
